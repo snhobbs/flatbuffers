@@ -2071,6 +2071,35 @@ class CppGenerator : public BaseGenerator {
     code_ += "decltype(std::declval<type>().get_field<Index>());";
   }
 
+  void GenIndexBasedOffsetGetter(const StructDef &struct_def) {
+    if (struct_def.fields.vec.empty()) { return; }
+    code_ += "  static constexpr size_t get_offset(const size_t index) {";
+    code_ += "    switch (index) {";
+    // Generate one index-based offset getter for each field.
+    size_t index = 0;
+    for (auto it = struct_def.fields.vec.begin();
+         it != struct_def.fields.vec.end(); ++it) {
+      const auto &field = **it;
+      if (field.deprecated) {
+        // Deprecated fields won't be accessible.
+        continue;
+      }
+      code_.SetValue("FIELD_NAME", Name(field));
+      code_.SetValue("FIELD_INDEX",
+                     std::to_string(static_cast<long long>(index++)));
+ 
+      code_ += "    case ({{FIELD_INDEX}}): {";
+      code_ += "      return offsetof({{STRUCT_NAME}}, {{FIELD_NAME}}_);";
+      code_ += "    }";
+      }
+      code_ += "    default: return 0;";
+      code_ += "  }";
+
+      code_ += "}";
+      code_ += "";
+  }
+
+
   void GenIndexBasedFieldGetter(const StructDef &struct_def) {
     if (struct_def.fields.vec.empty()) { return; }
     code_ += "  template<size_t Index>";
@@ -2312,7 +2341,10 @@ class CppGenerator : public BaseGenerator {
       if (field.key) { GenKeyFieldMethods(field); }
     }
 
-    if (opts_.cpp_static_reflection) { GenIndexBasedFieldGetter(struct_def); }
+    if (opts_.cpp_static_reflection) { 
+      GenIndexBasedFieldGetter(struct_def); 
+      GenIndexBasedOffsetGetter(struct_def); 
+    }
 
     // Generate a verifier function that can check a buffer from an untrusted
     // source will never cause reads outside the buffer.
@@ -3401,7 +3433,10 @@ class CppGenerator : public BaseGenerator {
     code_.SetValue("NATIVE_NAME", Name(struct_def));
     GenOperatorNewDelete(struct_def);
 
-    if (opts_.cpp_static_reflection) { GenIndexBasedFieldGetter(struct_def); }
+    if (opts_.cpp_static_reflection) { 
+      GenIndexBasedFieldGetter(struct_def);
+      GenIndexBasedOffsetGetter(struct_def);
+    }
 
     code_ += "};";
 
